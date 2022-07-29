@@ -4,7 +4,6 @@ import gpxpy.gpx
 
 import pandas as pd
 import matplotlib.pyplot as plt
-import sys
 from pathlib import Path
 import haversine as hs
 
@@ -133,13 +132,6 @@ def aggregate_by_km(source_info, distance):
         result.append(acc)
     return result
 
-def select_rest(source_info, max_speed):
-    result = []
-    for p in source_info:
-        if p['d_speed'] <= max_speed:
-            result.append(p)
-    return result
-    
 def plot_data(dataframe, fn):
     plt.rcParams['axes.spines.top'] = False
     plt.rcParams['axes.spines.right'] = False
@@ -247,7 +239,7 @@ def main():
     plot_map_poly(map, route_df, config.get("Map", "path_polyline_width", fallback=2))
 
     if config.get("Default", "show_rest", fallback="0") == "1":
-        rest_df = pd.DataFrame(select_rest(route, int(config.get("General", "rest_max_speed", fallback=2))))
+        rest_df = route_df.query("d_speed <= " + config.get("General", "rest_max_speed", fallback=2))
         plot_map_marker_rest(map, rest_df)
         stats['Rest Duration'] = timedelta_str(rest_df['d_time'].sum())
 
