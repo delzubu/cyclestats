@@ -11,7 +11,7 @@ import haversine as hs
 import folium
 import pandas as pd
 from IPython.display import display
- 
+
 def calc_distance(p, pp):
     if(pp == 0):
         return 0
@@ -130,6 +130,13 @@ def aggregate_by_km(source_info, distance):
         result.append(acc)
     return result
 
+def select_rest(source_info, max_speed):
+    result = []
+    for p in source_info:
+        if p['d_speed'] <= max_speed:
+            result.append(p)
+    return result
+    
 def plot_data(dataframe, fn):
     plt.rcParams['axes.spines.top'] = False
     plt.rcParams['axes.spines.right'] = False
@@ -169,6 +176,17 @@ def plot_map_marker(map, dataframe, radius = 3):
                 "<br />Elevation: " + str(round(row['d_elevation'],0)) +
                 "<br />Lap time: " + timedelta_str(row['d_time'])+
                 "<br />Speed: " + str(round(row['d_speed'],1)) +
+                ""
+        ).add_to(map)
+
+def plot_map_marker_rest(map, dataframe, radius = 3):
+    i=0
+    for _, row in dataframe.iterrows():
+        i=i+1
+        folium.Marker(
+            location=[row['latitude'], row['longitude']],
+            tooltip="Rest " + str(i) + 
+                "<br />Rest time: " + timedelta_str(row['d_time'])+
                 ""
         ).add_to(map)
 
@@ -222,6 +240,8 @@ def main():
 
     # If map need to be aggregated
     if aggregated == 1:
+        plot_map_marker_rest(map, pd.DataFrame(select_rest(route, 2)))
+
         route = aggregate_func(route)
         route_df = pd.DataFrame(route)
         plot_map_marker(map, route_df)
