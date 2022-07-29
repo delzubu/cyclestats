@@ -10,7 +10,10 @@ import haversine as hs
 
 import folium
 import pandas as pd
-from IPython.display import display
+import configparser
+import argparse
+
+config = configparser.ConfigParser()
 
 def calc_distance(p, pp):
     if(pp == 0):
@@ -204,27 +207,32 @@ def add_route_stats(stats, df):
 def add_route_stats_aggr(stats, df):
     stats['Lap Best'] = round(df['d_speed'].max(), 1);
 
+def setup_config():
+    config.read("plot.py.ini")
+
+    parser = argparse.ArgumentParser(description="Process KML file for bicycle stats")
+    parser.add_argument("filename", help="Name of the input file")
+    parser.add_argument("-d", "--aggregate_distance", help="Aggregate by distance")
+    parser.add_argument("-t", "--aggregate_time", help="Aggregate by time")
+    parser.add_argument("-r", "--show_rest", action="store_true", help="Show rest stops")
+    args = parser.parse_args()
+
+    print(args)
+    config.add_section("Default")
+    config.set("Default", "filename", Path(args.filename).stem)
+    config.set("Default", "aggregate_distance", args.aggregate_distance or "0")
+    config.set("Default", "aggregate_time", args.aggregate_time or "0")
+    config.set("Default", "aggregate", args.aggregate_time or args.aggregate_distance or "0")
+    config.set("Default", "show_rest", str(int(args.show_rest)))
+
+
 def main():
-    fn = ""
-    aggregated = 0
     stats = {}
 
-    if(len(sys.argv) > 1):
-        fn = Path(sys.argv[1]).stem
-    else:
-        fn = "2022-07-11_839902350_Kalcreuth 34km";
-
-    if(len(sys.argv) > 3):
-        if(sys.argv[2].upper() == "-T"):
-                aggregate_func = lambda route: aggregate_by_minute(route, int(sys.argv[3]))
-                aggregated = 1
-        elif(sys.argv[2].upper() == "-D"):
-                aggregate_func = lambda route: aggregate_by_km(route, int(sys.argv[3]))
-                aggregated = 1
-
+    setup_config()
 
     # read gpx
-    with open(fn+'.gpx', 'r') as gpx_file:
+    with open(config.get("Default", "filename")+'.gpx', 'r') as gpx_file:
         gpx = gpxpy.parse(gpx_file)
     add_gpx_stats(stats, gpx)
 
@@ -236,21 +244,31 @@ def main():
     add_route_stats(stats, route_df)
 
     map = init_map(route_df)
-    plot_map_poly(map, route_df, 2)
+    plot_map_poly(map, route_df, config.get("Map", "path_polyline_width", fallback=2))
+
+    if config.get("Default", "show_rest", fallback="0") == "1":
+        rest_df = pd.DataFrame(select_rest(route, int(config.get("General", "rest_max_speed", fallback=2))))
+        plot_map_marker_rest(map, rest_df)
+        stats['Rest Duration'] = timedelta_str(rest_df['d_time'].sum())
 
     # If map need to be aggregated
-    if aggregated == 1:
-        plot_map_marker_rest(map, pd.DataFrame(select_rest(route, 2)))
+    if config.get("Default", "aggregate", fallback="0") == "1":
+        if config.get("Default", "aggregate_distance", fallback="0") != "0":
+            print("Aggregate by distance")
+            route = aggregate_by_km(route, int(config.get("Default", "aggregate_distance")))
+        elif config.get("Default", "aggregate_time", fallback="0") != "0":
+            print("Aggregate by minutes")
+            route = aggregate_by_minute(route, int(config.get("Default", "aggregate_time")))
+        else:
+            print("Unknown aggregate")
 
-        route = aggregate_func(route)
         route_df = pd.DataFrame(route)
-        plot_map_marker(map, route_df)
-
-    add_route_stats_aggr(stats, route_df)
+        plot_map_marker(map, route_df, config.get("Map","interval_marker_radius", fallback=2))
+        add_route_stats_aggr(stats, route_df)
 
     # Export data frame to CSV
-    route_df.to_csv(fn+'.csv', index=False)
-    map.save(fn+".html")
+    route_df.to_csv(config.get("Default", "filename")+'.csv', index=False)
+    map.save(config.get("Default", "filename")+".html")
 
     print(stats)
 
